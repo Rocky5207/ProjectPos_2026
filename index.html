@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market register</title>
+<style>
+*{box-sizing:border-box}body{max-width:920px;margin:40px auto;padding:0 20px;background:#f4f5f1;color:#19372f;font:18px/1.5 system-ui}header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #345f50}h1{font-size:34px}h2{font-size:23px;margin:0 0 12px}section{background:white;border:1px solid #cdd8d1;padding:22px;margin:16px 0;border-radius:8px}select,input,button{padding:8px;font:inherit;border:1px solid #9aaea4;border-radius:4px}button{background:#215a49;color:white;cursor:pointer}input{width:100px}label{display:inline-block;margin:5px}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #ddd;padding:5px}output{display:block;font-weight:bold;margin-top:8px}nav{margin-top:16px}p{margin:8px 0}
+</style>
+<header><h1>Market register</h1><span>Cash desk 01</span></header>
+<nav><button id="sell">Sale</button> <button id="back">Returns</button></nav>
+<section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button></div>
+<label>Item <select id="product"></select></label><label>Qty <input id="qty" type="number" min="1" value="1"></label><button id="add">Add item</button>
+<table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody id="lines"></tbody></table>
+<p><strong id="total"></strong></p><label id="cashLabel">Cash received ¥ <input id="cash" type="number" step=".01" min="0"></label><button id="finish"></button><output id="msg" aria-live="polite"></output></section>
+<section><h2>Last transaction</h2><div id="receipt">No transaction yet.</div></section>
+<script>
+const $ = id => document.getElementById(id);
+const money = cents => '¥' + (cents / 100).toFixed(2);
+const catalog = {milk:{name:'Milk',price:650},bread:{name:'Bread',price:400},eggs:{name:'Eggs',price:900}};
+class Basket {
+  constructor(){ this.items = {}; }
+  add(id, qty, limit){
+    const count = (this.items[id] || 0) + qty;
+    if (!Number.isSafeInteger(qty) || qty < 1 || count > limit)
+      throw Error('Check quantity. Available: ' + limit);
+    this.items[id] = count;
+  }
+  total(){ return Object.entries(this.items).reduce((sum,[id,q]) => sum + catalog[id].price*q,0); }
+}
+class Register {
+  constructor(){
+    this.state = JSON.parse(localStorage.getItem('market-register-v1')) ||
+      {stock:{milk:20,bread:20,eggs:20},sales:[],returns:[]};
+  }
+  available(id,sale){
+    return sale ? (sale.items[id] || 0) - (sale.returned[id] || 0) : this.state.stock[id];
+  }
+  complete(basket,cash,sale){
+    const total = basket.total();
+    if (!total) throw Error('Add an item first.');
+    if (!sale && (!Number.isSafeInteger(cash) || cash < total)) throw Error('Cash is below the total.');
+    const next = structuredClone(this.state);
+    const original = sale && next.sales.find(s => s.no === sale.no);
+    for (const [id,q] of Object.entries(basket.items)){
+      if (q > this.available(id,sale)) throw Error('Quantity exceeds available units.');
+      next.stock[id] += sale ? q : -q;
+      if (original) original.returned[id] = (original.returned[id] || 0) + q;
+    }
+    const record = {no:sale ? sale.no : next.sales.length+1,items:{...basket.items},total};
+    if (sale) next.returns.push(record);
+    else next.sales.push({...record,returned:{},cash,change:cash-total});
+    localStorage.setItem('market-register-v1',JSON.stringify(next));
+    this.state = next;
+    return record;
+  }
+}
+const register = new Register();
+let basket, returning, sale;
+function draw(){
+  $('product').replaceChildren();
+  for (const [id,p] of Object.entries(catalog)){
+    if (returning && (!sale || !sale.items[id])) continue;
+    $('product').add(new Option(p.name+' · '+money(p.price)+' · '+register.available(id,sale)+' available',id));
+  }
+  $('lines').innerHTML = Object.entries(basket.items).map(([id,q]) =>
+    '<tr><td>'+catalog[id].name+'</td><td>'+q+'</td><td>'+money(q*catalog[id].price)+'</td></tr>').join('');
+  $('total').textContent = (returning?'Refund: ':'Total: ')+money(basket.total());
+}
+function mode(isReturn){
+  returning=isReturn; sale=null; basket=new Basket();
+  $('heading').textContent=isReturn?'Return items':'New sale';
+  $('lookup').hidden=!isReturn; $('cashLabel').style.display=isReturn?'none':'';
+  $('finish').textContent=isReturn?'Confirm refund':'Take payment';
+  $('cash').value=''; $('qty').value=1; $('msg').textContent=''; draw();
+}
+function action(fn){try{$('msg').textContent='';fn();}catch(e){$('msg').textContent=e.message;}}
+$('sell').onclick=()=>mode(false); $('back').onclick=()=>mode(true);
+$('load').onclick=()=>action(()=>{
+  sale=register.state.sales.find(s=>s.no===Number($('number').value)); basket=new Basket(); draw();
+  if(!sale) throw Error('Receipt not found.');
+});
+$('number').oninput=()=>{sale=null;basket=new Basket();draw();};
+$('add').onclick=()=>action(()=>{
+  if(returning && !sale) throw Error('Find the original receipt first.');
+  const id=$('product').value; basket.add(id,Number($('qty').value),register.available(id,sale));draw();
+});
+$('finish').onclick=()=>action(()=>{
+  if(returning && !sale) throw Error('Find the original receipt first.');
+  const cash=Math.round(Number($('cash').value)*100);
+  const record=register.complete(basket,cash,sale);
+  const lines=Object.entries(record.items).map(([id,q])=>catalog[id].name+' × '+q+' = '+money(q*catalog[id].price));
+  $('receipt').innerText=[(returning?'Return against receipt #':'Receipt #')+record.no,...lines,
+    (returning?'Refund ':'Total ')+money(record.total),...(returning?[]:['Cash '+money(cash)+'   Change '+money(cash-record.total)])].join('\n');
+  mode(returning);
+});
+mode(false);
+</script></html>
