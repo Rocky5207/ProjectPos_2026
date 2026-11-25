@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Campus shop register</title>
+<title>Campus Shop · Electronics Counter</title>
 <style>
 *{box-sizing:border-box}body{max-width:920px;margin:40px auto;padding:0 20px;background:#f4f5f1;color:#19372f;font:18px/1.5 system-ui}header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #345f50}h1{font-size:34px}h2{font-size:23px;margin:0 0 12px}section{background:white;border:1px solid #cdd8d1;padding:22px;margin:16px 0;border-radius:8px}select,input,button{padding:8px;font:inherit;border:1px solid #9aaea4;border-radius:4px}button{background:#215a49;color:white;cursor:pointer}input{width:100px}label{display:inline-block;margin:5px}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #ddd;padding:5px}output{display:block;font-weight:bold;margin-top:8px}nav{margin-top:16px}p{margin:8px 0}
 </style>
-<header><h1>Campus shop register</h1><span>Cash desk 01</span></header>
+<header><h1>Campus Shop · Electronics Counter</h1><span>Cash desk 01</span></header>
 <nav><button id="sell">Sale</button> <button id="back">Returns</button></nav>
-<section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button><table id="balance" hidden><caption>Original receipt balance</caption><thead><tr><th>Item</th><th>Bought</th><th>Already returned</th><th>Left to return</th></tr></thead><tbody id="balanceRows"></tbody></table></div>
+<section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button><table id="balance" hidden><caption>Original receipt balance</caption><thead><tr><th>Item</th><th>Unit</th><th>Bought</th><th>Already returned</th><th>Left to return</th></tr></thead><tbody id="balanceRows"></tbody></table></div>
 <label>Item <select id="product"></select></label><label>Qty <input id="qty" type="number" min="1" value="1"></label><button id="add">Add item</button>
 <table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody id="lines"></tbody></table>
 <p><strong id="total"></strong></p><label id="cashLabel">Cash received ¥ <input id="cash" type="number" step=".01" min="0"></label><button id="finish"></button><output id="msg" aria-live="polite"></output></section>
@@ -14,7 +14,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const money = cents => '¥' + (cents / 100).toFixed(2);
-const catalog = {milk:{name:'Milk',price:650},bread:{name:'Bread',price:400},eggs:{name:'Eggs',price:900}};
+const catalog = {wires:{name:'Jumper wires',unit:'pack',price:400},board:{name:'Breadboard',unit:'piece',price:800},led:{name:'LED',unit:'piece',price:50}};
 class Basket {
   constructor(){ this.items = {}; }
   add(id, qty, limit){
@@ -27,8 +27,8 @@ class Basket {
 }
 class Register {
   constructor(){
-    this.state = JSON.parse(localStorage.getItem('market-register-v1')) ||
-      {stock:{milk:20,bread:20,eggs:20},sales:[],returns:[]};
+    this.state = JSON.parse(localStorage.getItem('campus-electronics-v1')) ||
+      {stock:{wires:20,board:20,led:20},sales:[],returns:[]};
   }
   available(id,sale){
     return sale ? (sale.items[id] || 0) - (sale.returned[id] || 0) : this.state.stock[id];
@@ -47,7 +47,7 @@ class Register {
     const record = {no:sale ? sale.no : next.sales.length+1,items:{...basket.items},total};
     if (sale) next.returns.push(record);
     else next.sales.push({...record,returned:{},cash,change:cash-total});
-    localStorage.setItem('market-register-v1',JSON.stringify(next));
+    localStorage.setItem('campus-electronics-v1',JSON.stringify(next));
     this.state = next;
     return record;
   }
@@ -60,7 +60,7 @@ function draw(){
   if (sale) {
     for (const [id, bought] of Object.entries(sale.items)) {
       const row = $('balanceRows').insertRow();
-      for (const value of [catalog[id].name, bought, sale.returned[id] || 0, register.available(id,sale)]) {
+      for (const value of [catalog[id].name, catalog[id].unit, bought, sale.returned[id] || 0, register.available(id,sale)]) {
         row.insertCell().textContent = value;
       }
     }
@@ -68,10 +68,10 @@ function draw(){
   $('product').replaceChildren();
   for (const [id,p] of Object.entries(catalog)){
     if (returning && (!sale || !sale.items[id])) continue;
-    $('product').add(new Option(p.name+' · '+money(p.price)+' · '+register.available(id,sale)+' available',id));
+    $('product').add(new Option(p.name+' · '+money(p.price)+'/'+p.unit+' · '+register.available(id,sale)+' '+p.unit+'(s) available',id));
   }
   $('lines').innerHTML = Object.entries(basket.items).map(([id,q]) =>
-    '<tr><td>'+catalog[id].name+'</td><td>'+q+'</td><td>'+money(q*catalog[id].price)+'</td></tr>').join('');
+    '<tr><td>'+catalog[id].name+'</td><td>'+q+' '+catalog[id].unit+'(s)</td><td>'+money(q*catalog[id].price)+'</td></tr>').join('');
   $('total').textContent = (returning?'Refund: ':'Total: ')+money(basket.total());
 }
 function mode(isReturn){
@@ -96,7 +96,7 @@ $('finish').onclick=()=>action(()=>{
   if(returning && !sale) throw Error('Find the original receipt first.');
   const cash=Math.round(Number($('cash').value)*100);
   const record=register.complete(basket,cash,sale);
-  const lines=Object.entries(record.items).map(([id,q])=>catalog[id].name+' × '+q+' = '+money(q*catalog[id].price));
+  const lines=Object.entries(record.items).map(([id,q])=>catalog[id].name+' × '+q+' '+catalog[id].unit+'(s) = '+money(q*catalog[id].price));
   $('receipt').innerText=[(returning?'Return against receipt #':'Receipt #')+record.no,...lines,
     (returning?'Refund ':'Total ')+money(record.total),...(returning?[]:['Cash '+money(cash)+'   Change '+money(cash-record.total)])].join('\n');
   mode(returning);
