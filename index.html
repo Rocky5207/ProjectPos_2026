@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Market register</title>
+<title>Campus shop register</title>
 <style>
 *{box-sizing:border-box}body{max-width:920px;margin:40px auto;padding:0 20px;background:#f4f5f1;color:#19372f;font:18px/1.5 system-ui}header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #345f50}h1{font-size:34px}h2{font-size:23px;margin:0 0 12px}section{background:white;border:1px solid #cdd8d1;padding:22px;margin:16px 0;border-radius:8px}select,input,button{padding:8px;font:inherit;border:1px solid #9aaea4;border-radius:4px}button{background:#215a49;color:white;cursor:pointer}input{width:100px}label{display:inline-block;margin:5px}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #ddd;padding:5px}output{display:block;font-weight:bold;margin-top:8px}nav{margin-top:16px}p{margin:8px 0}
 </style>
-<header><h1>Market register</h1><span>Cash desk 01</span></header>
+<header><h1>Campus shop register</h1><span>Cash desk 01</span></header>
 <nav><button id="sell">Sale</button> <button id="back">Returns</button></nav>
-<section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button></div>
+<section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button><table id="balance" hidden><caption>Original receipt balance</caption><thead><tr><th>Item</th><th>Bought</th><th>Already returned</th><th>Left to return</th></tr></thead><tbody id="balanceRows"></tbody></table></div>
 <label>Item <select id="product"></select></label><label>Qty <input id="qty" type="number" min="1" value="1"></label><button id="add">Add item</button>
 <table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody id="lines"></tbody></table>
 <p><strong id="total"></strong></p><label id="cashLabel">Cash received ¥ <input id="cash" type="number" step=".01" min="0"></label><button id="finish"></button><output id="msg" aria-live="polite"></output></section>
@@ -55,6 +55,16 @@ class Register {
 const register = new Register();
 let basket, returning, sale;
 function draw(){
+  $('balance').hidden = !sale;
+  $('balanceRows').replaceChildren();
+  if (sale) {
+    for (const [id, bought] of Object.entries(sale.items)) {
+      const row = $('balanceRows').insertRow();
+      for (const value of [catalog[id].name, bought, sale.returned[id] || 0, register.available(id,sale)]) {
+        row.insertCell().textContent = value;
+      }
+    }
+  }
   $('product').replaceChildren();
   for (const [id,p] of Object.entries(catalog)){
     if (returning && (!sale || !sale.items[id])) continue;
