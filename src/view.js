@@ -5,6 +5,7 @@ const photos=/* PHOTOS */ {};
 const sections={Register:'Lunch counter',Returns:'Receipt & returns',Stock:'Stock room',Batches:'Batch review',Shift:'Shift ledger'};
 const store=new Store();
 let state,tab='Register',filter='All',query='',selected='',cash='',notice='',busy=false,displayDay='';
+let drawerOpen=false;
 let chosenBatch='B01';
 const reg=()=>new Register(state);
 function button(act,label,cls='small',data=''){return '<button class="'+cls+'" data-act="'+act+'" '+data+'>'+label+'</button>';}
@@ -72,10 +73,21 @@ function batchReview(){
     '<div class="row total"><span>Net cash across this lot’s history</span><strong>'+yuan(net)+'</strong></div></section>'+
     '<aside class="till"><h2>Record a write-off</h2><p class="note sub">At closing, count the unsold units first. A write-off removes stock and leaves cash unchanged.</p>'+form+'</aside></div>';
 }
+function drawerView(){
+  const r=reg(), day=r.drawerDay();
+  const sum=r.shift();
+  const inputs=CASH_VALUES.map((value,i)=>'<label>'+yuan(value)+'<input data-coin="'+i+'" type="number" min="0" max="9999" step="1" placeholder="0"></label>').join('');
+  const counts=day?'<p class="entry">Opening float <b>'+yuan(day.opening)+'</b> · Net sales <b>'+yuan(sum.net)+'</b></p><div class="coins">'+inputs+'</div><div class="row total"><span>Counted cash</span><strong id="counted">'+yuan(0)+'</strong></div>'+button('saveCount','Save handover count','solid'):
+    '<label class="field">Cash in drawer before today’s first sale (CNY)<input id="opening" type="number" min="0" step=".01"></label>'+button('saveFloat','Record opening float','solid');
+  const checks=(state.drawerDays||[]).flatMap(d=>d.checks).reverse();
+  const history=checks.length?tables(['Count ref.','Expected','Counted','Difference'],checks.map(c=>[c.ref,yuan(c.expected),yuan(c.counted),yuan(c.variance)])):'<p class="empty">No counts saved yet.</p>';
+  return '<section class="panel"><div class="heading"><h2>Cash handover</h2>'+button('ledger','Back to ledger')+'</div><div class="columns sub"><div><h3>Count the drawer</h3>'+counts+'</div><div><h3>Saved counts</h3>'+history+'<p class="note">Difference = counted minus expected. Each count keeps the sales and refunds known at that moment.</p></div></div></section>';
+}
 function shift(){
+  if(drawerOpen) return drawerView();
   const r=reg(),s=r.shift(), movements=state.moves.filter(m=>m.day===r.day).slice().reverse();
   const stats=[['Completed sales',s.sales],['Sales',yuan(s.gross)],['Refunds',yuan(s.paidBack)],['Net cash',yuan(s.net)],['Markdown units sold',s.markedUnits]];
-  return '<section class="panel"><div class="heading"><h2>Today’s till</h2>'+button('csv','Export ledger CSV')+'</div><div class="kpis">'+stats.map(([k,v])=>'<div class="metric"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div><h3>Stock movements</h3>'+(movements.length?tables(['Reference','Reason','Product','Lot','Shelf Δ','Quarantine Δ'],movements.map(m=>[m.ref,m.reason,product(m.sku).name,m.lot,m.delta,m.isolated])):'<p class="empty">Sales, returns and deliveries will appear here.</p>')+'</section>';
+  return '<section class="panel"><div class="heading"><h2>Today’s till</h2>'+'<div>'+button('drawer','Cash handover')+' '+button('csv','Export ledger CSV')+'</div></div><div class="kpis">'+stats.map(([k,v])=>'<div class="metric"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div><h3>Stock movements</h3>'+(movements.length?tables(['Reference','Reason','Product','Lot','Shelf Δ','Quarantine Δ'],movements.map(m=>[m.ref,m.reason,product(m.sku).name,m.lot,m.delta,m.isolated])):'<p class="empty">Sales, returns and deliveries will appear here.</p>')+'</section>';
 }
 function render(){
   displayDay=dayOf();
@@ -97,6 +109,11 @@ function paper(x){
 }
 function csv(){
   const r=reg(),s=r.shift(),rows=[['Day','Sales (CNY)','Refunds (CNY)','Net cash (CNY)'],[r.day,s.gross/100,s.paidBack/100,s.net/100],[],['Ref','Reason','Lot','Product','Shelf delta','Isolated delta'],...state.moves.filter(m=>m.day===r.day).map(m=>[m.ref,m.reason,m.lot,product(m.sku).name,m.delta,m.isolated])];
+  const drawer=r.drawerDay();
+  if(drawer){
+    rows.push([],['Opening float (CNY)',drawer.opening/100],['Count ref','Sales (CNY)','Refunds (CNY)','Expected (CNY)','Counted (CNY)','Variance (CNY)',...CASH_VALUES.map(v=>'Pieces at '+v+' fen')]);
+    for(const c of drawer.checks) rows.push([c.ref,c.gross/100,c.paidBack/100,c.expected/100,c.counted/100,c.variance/100,...c.pieces]);
+  }
   const url=URL.createObjectURL(new Blob([rows.map(row=>row.join(',')).join('\r\n')],{type:'text/csv'}));
   const link=document.createElement('a');link.href=url;link.download='Noon-ledger-'+r.day+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
@@ -104,7 +121,8 @@ async function act(a,id){
   if(a==='close'){ $('#dialog').close();return; }
   if(a==='print'){window.print();return;}
   msg('');
-  if(a==='nav'){tab=id;render();return;}
+  if(a==='nav'){tab=id;drawerOpen=false;render();return;}
+  if(a==='drawer'||a==='ledger'){drawerOpen=a==='drawer';render();return;}
   if(a==='filter'){filter=id;render();return;}
   if(a==='receipt'){paper(state.sales.find(s=>s.id===id));return;}
   if(a==='csv'){csv();return;}
@@ -120,6 +138,8 @@ async function act(a,id){
     if(!window.confirm('Write off '+units+' unit(s) from '+chosenBatch+' for '+$('#reason').value+'?'))return;
   }
   const ops={
+    saveFloat:r=>r.setOpeningFloat(toFen($('#opening').value)),
+    saveCount:r=>r.countDrawer([...document.querySelectorAll('[data-coin]')].map(e=>e.value===''&&!e.validity.badInput?0:e.valueAsNumber)),
     dispose:r=>r.writeOff(chosenBatch,$('#reason').value,Number($('#discard-qty').value)),
     add:r=>r.setQty(id,(r.s.basket[id]||0)+1),
     minus:r=>r.setQty(id,(r.s.basket[id]||0)-1),remove:r=>r.setQty(id,0),
@@ -139,6 +159,7 @@ async function act(a,id){
         'Price changed from '+yuan(out.result)+' to '+yuan(now)+'. Available batches changed.'));
     }catch{msg('Recalled '+id+'. Stock changed. Reduce or remove the unavailable line.');}
   }
+  if(a==='saveCount')msg('Count saved. Difference: '+yuan(out.result.variance)+'.');
   if(a==='dispose')msg('Write-off '+out.result+' recorded for '+chosenBatch+'. Cash movement: '+yuan(0)+'.');
   if(a==='receive')msg('Delivery recorded as '+out.result+'.');
 }
@@ -149,7 +170,8 @@ document.addEventListener('click',async e=>{
   finally{busy=false;}
 });
 document.addEventListener('change',e=>{if(e.target.id==='trace-lot'){chosenBatch=e.target.value;msg('');render();}});
-document.addEventListener('input',e=>{if(e.target.id==='search'){query=e.target.value;$('#products').innerHTML=tiles();}
+document.addEventListener('input',e=>{if(e.target.hasAttribute('data-coin')){let n=0;for(const el of document.querySelectorAll('[data-coin]'))n+=(Number(el.value)||0)*CASH_VALUES[el.dataset.coin];$('#counted').textContent=yuan(n);}
+  if(e.target.id==='search'){query=e.target.value;$('#products').innerHTML=tiles();}
   if(e.target.id==='cash'){cash=e.target.value;showChange();}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='lookup')$('[data-act=find]').click();});
 store.open().then(o=>{state=o.state;render();}).catch(()=>msg('Browser storage could not open. Use a regular Chrome, Edge or Firefox window.'));
