@@ -81,3 +81,25 @@ test('B4 tracing a mixed receipt attributes only the selected batch and keeps di
   assert.equal(r.trace('B02').net,800);assert.equal(r.shift().net,2000);
   assert.throws(()=>r.writeOff('B01','Quarantine disposal',1));
 });
+test('D1 an existing till can adopt a zero or positive float once per date',()=>{
+  const r=fresh();assert.equal(r.drawerDay(),undefined);
+  assert.throws(()=>r.setOpeningFloat(-1));r.setOpeningFloat(10000);
+  assert.throws(()=>r.setOpeningFloat(0));const next=new Register(r.s,'2026-11-27');
+  next.setOpeningFloat(0);assert.equal(next.drawerDay().opening,0);assert.equal(r.drawerDay().opening,10000);
+});
+test('D2 count a short drawer independently of stock movements and preserve its snapshot',()=>{
+  const r=fresh();r.setOpeningFloat(10000);const s=riceSale(r);
+  r.refund(s.id,0,1,'Opened');r.writeOff('B01','Quarantine disposal',1);
+  const pieces=[1,0,0,1,1,4,1,0,0,0,0];
+  const first=r.countDrawer(pieces);assert.equal(first.expected,12000);assert.equal(first.counted,11950);
+  assert.equal(first.variance,-50);r.setQty('105',1);r.pay(200);
+  assert.equal(first.expected,12000);assert.equal(r.countDrawer(pieces).expected,12200);
+});
+test('D3 reject duplicate and invalid counts; preserve a corrected recount as a second record',()=>{
+  const r=fresh(),pieces=Array(11).fill(0);assert.throws(()=>r.countDrawer(pieces));r.setOpeningFloat(100);
+  for(const invalid of [[1],new Array(11),[.5,...pieces.slice(1)],[-1,...pieces.slice(1)]])
+    assert.throws(()=>r.countDrawer(invalid));
+  r.countDrawer(pieces);assert.throws(()=>r.countDrawer(pieces));pieces[5]=1;
+  r.countDrawer(pieces);assert.deepEqual(r.drawerDay().checks.map(c=>c.variance),[-100,0]);
+  assert.equal(r.shift().net,0);
+});

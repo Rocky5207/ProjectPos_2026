@@ -484,6 +484,7 @@ async function act(a,id){
     if(!state.sales.some(s=>s.id===key)){selected='';render();throw Error('Receipt not found. Check the sale number.');}
     selected=key;render();return;
   }
+  if(['saveCount','saveFloat'].includes(a) && displayDay!==dayOf()){render();throw Error('The business date changed. Review the drawer for today.');}
   if(a==='pay' && displayDay!==dayOf()){render();throw Error('The business date changed. Review prices before collecting cash.');}
   if(a==='dispose'){
     const units=Number($('#discard-qty').value);
