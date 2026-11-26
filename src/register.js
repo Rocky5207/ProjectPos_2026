@@ -78,14 +78,17 @@ class Register {
   park() {
     if(!Object.keys(this.s.basket).length) throw Error('Add an item before parking a basket.');
     const id='H'+String(this.s.nextHold++).padStart(3,'0');
-    this.s.holds.push({id,basket:this.s.basket}); this.s.basket={};
+    const quoted=this.quote().total;
+    this.s.holds.push({id,basket:this.s.basket,quoted}); this.s.basket={};
     return id;
   }
   recall(id) {
     if(Object.keys(this.s.basket).length) throw Error('Park or finish the current basket first.');
     const i=this.s.holds.findIndex(h=>h.id===id);
     if(i<0) throw Error('Ticket has already been recalled.');
-    this.s.basket=this.s.holds.splice(i,1)[0].basket;
+    const ticket=this.s.holds.splice(i,1)[0];
+    this.s.basket=ticket.basket;
+    return ticket.quoted;
   }
   pay(cash) {
     const quote=this.quote();

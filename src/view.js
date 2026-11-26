@@ -4,7 +4,7 @@ const yuan=n=>'¥'+(n/100).toFixed(2);
 const photos=/* PHOTOS */ {};
 const sections={Register:'Lunch counter',Returns:'Receipt & returns',Stock:'Stock room',Shift:'Shift ledger'};
 const store=new Store();
-let state,tab='Register',filter='All',query='',selected='',cash='',notice='',busy=false;
+let state,tab='Register',filter='All',query='',selected='',cash='',notice='',busy=false,displayDay='';
 const reg=()=>new Register(state);
 function button(act,label,cls='small',data=''){return '<button class="'+cls+'" data-act="'+act+'" '+data+'>'+label+'</button>';}
 const tables=(heads,rows)=>'<div class="tabular"><table><thead><tr>'+heads.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
@@ -56,6 +56,7 @@ function shift(){
   return '<section class="panel"><div class="heading"><h2>Today’s till</h2>'+button('csv','Export ledger CSV')+'</div><div class="kpis">'+stats.map(([k,v])=>'<div class="metric"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div><h3>Stock movements</h3>'+(movements.length?tables(['Reference','Reason','Product','Lot','Shelf Δ','Quarantine Δ'],movements.map(m=>[m.ref,m.reason,product(m.sku).name,m.lot,m.delta,m.isolated])):'<p class="empty">Sales, returns and deliveries will appear here.</p>')+'</section>';
 }
 function render(){
+  displayDay=dayOf();
   $('nav').innerHTML=Object.keys(sections).map(k=>button('nav',k,k===tab?'active':'','data-id="'+k+'"')).join('');
   $('#title').textContent=sections[tab]; $('#section-id').textContent='CAMPUS MARKET / '+tab;
   $('#date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
@@ -90,6 +91,7 @@ async function act(a,id){
     if(!state.sales.some(s=>s.id===key)){selected='';render();throw Error('Receipt not found. Check the sale number.');}
     selected=key;render();return;
   }
+  if(a==='pay' && displayDay!==dayOf()){render();throw Error('The business date changed. Review prices before collecting cash.');}
   const ops={
     add:r=>r.setQty(id,(r.s.basket[id]||0)+1),
     minus:r=>r.setQty(id,(r.s.basket[id]||0)-1),remove:r=>r.setQty(id,0),
@@ -102,6 +104,13 @@ async function act(a,id){
   render();
   if(a==='pay'||a==='refund')paper(out.result);
   if(a==='park')msg('Parked as '+out.result+'. Stock will be checked again at payment.');
+  if(a==='recall'){
+    try{
+      const now=reg().quote().total;
+      msg('Recalled '+id+'. '+(now===out.result?'Total unchanged at '+yuan(now)+'.':
+        'Price changed from '+yuan(out.result)+' to '+yuan(now)+'. Available batches changed.'));
+    }catch{msg('Recalled '+id+'. Stock changed. Reduce or remove the unavailable line.');}
+  }
   if(a==='receive')msg('Delivery recorded as '+out.result+'.');
 }
 document.addEventListener('click',async e=>{
