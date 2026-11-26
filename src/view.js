@@ -2,9 +2,10 @@
 const $=s=>document.querySelector(s);
 const yuan=n=>'¥'+(n/100).toFixed(2);
 const photos=/* PHOTOS */ {};
-const sections={Register:'Lunch counter',Returns:'Receipt & returns',Stock:'Stock room',Shift:'Shift ledger'};
+const sections={Register:'Lunch counter',Returns:'Receipt & returns',Stock:'Stock room',Batches:'Batch review',Shift:'Shift ledger'};
 const store=new Store();
 let state,tab='Register',filter='All',query='',selected='',cash='',notice='',busy=false,displayDay='';
+let chosenBatch='B01';
 const reg=()=>new Register(state);
 function button(act,label,cls='small',data=''){return '<button class="'+cls+'" data-act="'+act+'" '+data+'>'+label+'</button>';}
 const tables=(heads,rows)=>'<div class="tabular"><table><thead><tr>'+heads.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>'<td>'+x+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
@@ -50,6 +51,27 @@ function stockView(){
   const rows=state.lots.map(l=>[l.id,product(l.sku).name,l.expires,l.expires<r.day?'Expired':l.qty===0?'Empty':r.stock.price(l)<product(l.sku).price?'−25% today':'Regular',l.qty,l.blocked]);
   return '<div class="columns"><section class="panel"><h2>Batch register</h2>'+tables(['Lot','Product','Expiry','Status','On hand','Isolated'],rows)+'<p class="note">Expired on-hand units are excluded from checkout availability.</p></section><aside class="till"><h2>Receive a delivery</h2><label class="field">Product<select id="sku">'+opts(PRODUCTS.map(p=>[p.id,p.name]))+'</select></label><label class="field">Units<input id="sq" type="number" min="1" value="1"></label><label class="field">Use-by date<input id="expiry" type="date" value="'+r.day+'"></label>'+button('receive','Add stock lot','solid')+'<div class="park"><h3>Below shelf minimum</h3>'+ (low.map(p=>'<p class="entry">'+p.name+' <small>· target '+p.min+'</small></p>').join('')||'<p class="note">All products meet minimum.</p>')+'</div></aside></div>';
 }
+function batchReview(){
+  const register=reg();
+  const review=register.expiryReview();
+  const {lot,events,net}=register.trace(chosenBatch);
+  const reasons=register.disposalOptions(lot);
+  const all=[...state.lots].sort((a,b)=>a.expires.localeCompare(b.expires)||a.id.localeCompare(b.id));
+  const metrics=[['Units expiring today',review.units],['Current shelf value',yuan(review.value)],
+    ['Expired on shelf',review.expired],['Isolated units',review.isolated]];
+  const summary='<div class="kpis">'+metrics.map(([k,v])=>'<div class="metric"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div>';
+  const select='<label class="field">Inspect lot<select id="trace-lot">'+all.map(l=>
+    '<option value="'+l.id+'" '+(l.id===chosenBatch?'selected':'')+'>'+l.id+' · '+product(l.sku).name+' · '+l.expires+'</option>').join('')+'</select></label>';
+  const trace=events.length?tables(['Date','Reference','Event','Shelf Δ','Isolated Δ','Cash Δ'],
+    events.map(e=>[e.day,e.ref,e.reason,e.delta,e.isolated,yuan(e.cash)])):'<p class="empty">No movements recorded for this lot yet.</p>';
+  const form=reasons.length?'<label class="field">Reason<select id="reason">'+opts(reasons.map(x=>[x,x]))+
+    '</select></label><label class="field">Units<input type="number" min="1" value="1" id="discard-qty"></label>'+
+    button('dispose','Record write-off','solid'):'<p class="empty">No stock eligible for disposal on this lot.</p>';
+  return summary+'<div class="columns"><section class="panel"><h2>Batch history</h2>'+select+
+    '<div class="row entry"><strong>'+product(lot.sku).name+'</strong><span>'+lot.qty+' on shelf · '+lot.blocked+' isolated</span></div>'+trace+
+    '<div class="row total"><span>Net cash across this lot’s history</span><strong>'+yuan(net)+'</strong></div></section>'+
+    '<aside class="till"><h2>Record a write-off</h2><p class="note sub">At closing, count the unsold units first. A write-off removes stock and leaves cash unchanged.</p>'+form+'</aside></div>';
+}
 function shift(){
   const r=reg(),s=r.shift(), movements=state.moves.filter(m=>m.day===r.day).slice().reverse();
   const stats=[['Completed sales',s.sales],['Sales',yuan(s.gross)],['Refunds',yuan(s.paidBack)],['Net cash',yuan(s.net)],['Markdown units sold',s.markedUnits]];
@@ -60,7 +82,7 @@ function render(){
   $('nav').innerHTML=Object.keys(sections).map(k=>button('nav',k,k===tab?'active':'','data-id="'+k+'"')).join('');
   $('#title').textContent=sections[tab]; $('#section-id').textContent='CAMPUS MARKET / '+tab;
   $('#date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
-  $('#app').innerHTML=({Register:checkout,Returns:returns,Stock:stockView,Shift:shift})[tab]();
+  $('#app').innerHTML=({Register:checkout,Returns:returns,Stock:stockView,Batches:batchReview,Shift:shift})[tab]();
   if(tab==='Register'){$('#search').value=query;$('#cash').value=cash;showChange();}
 }
 function toFen(value){
@@ -92,7 +114,13 @@ async function act(a,id){
     selected=key;render();return;
   }
   if(a==='pay' && displayDay!==dayOf()){render();throw Error('The business date changed. Review prices before collecting cash.');}
+  if(a==='dispose'){
+    const units=Number($('#discard-qty').value);
+    positive(units);
+    if(!window.confirm('Write off '+units+' unit(s) from '+chosenBatch+' for '+$('#reason').value+'?'))return;
+  }
   const ops={
+    dispose:r=>r.writeOff(chosenBatch,$('#reason').value,Number($('#discard-qty').value)),
     add:r=>r.setQty(id,(r.s.basket[id]||0)+1),
     minus:r=>r.setQty(id,(r.s.basket[id]||0)-1),remove:r=>r.setQty(id,0),
     park:r=>r.park(),recall:r=>r.recall(id),pay:r=>r.pay(toFen(cash)),
@@ -111,6 +139,7 @@ async function act(a,id){
         'Price changed from '+yuan(out.result)+' to '+yuan(now)+'. Available batches changed.'));
     }catch{msg('Recalled '+id+'. Stock changed. Reduce or remove the unavailable line.');}
   }
+  if(a==='dispose')msg('Write-off '+out.result+' recorded for '+chosenBatch+'. Cash movement: '+yuan(0)+'.');
   if(a==='receive')msg('Delivery recorded as '+out.result+'.');
 }
 document.addEventListener('click',async e=>{
@@ -119,6 +148,7 @@ document.addEventListener('click',async e=>{
   catch(e){if(e.message.includes('another tab')){state=(await store.run()).state;render();}msg(e.message);}
   finally{busy=false;}
 });
+document.addEventListener('change',e=>{if(e.target.id==='trace-lot'){chosenBatch=e.target.value;msg('');render();}});
 document.addEventListener('input',e=>{if(e.target.id==='search'){query=e.target.value;$('#products').innerHTML=tiles();}
   if(e.target.id==='cash'){cash=e.target.value;showChange();}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='lookup')$('[data-act=find]').click();});

@@ -27,3 +27,9 @@ Baskets hold quantities. Parking leaves stock available to other customers. Fres
 - `build.py` — regenerate the portable HTML with Python 3
 
 One local business date and one shared till are assumed. Retail authentication, cloud backup and physical cash-drawer integration are outside this prototype.
+
+## End-of-day batch review
+
+Open Batches to see units expiring today, their current shelf value, expired on-hand units and quarantined stock. Pick a lot to trace its sale, refund, delivery and disposal references. The net amount is across that lot's full history. At closing a cashier may write off remaining units due today, an expired shelf balance, or units already isolated. Each entry affects only the chosen balance and posts zero cash. On a fresh till, B03 has two discounted sandwiches worth ¥14.26 together. Writing off one reduces the total expiring shelf value from ¥32.26 to ¥25.13.
+
+Run `node test/queue-study.js` to reproduce the report's sixteen basket-interruption trials.

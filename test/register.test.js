@@ -57,3 +57,27 @@ test('L1 shift reconciles amounts, refunds and markdown units',()=>{
   const r=fresh();const s=riceSale(r);r.refund(s.id,0,1,'Opened');
   assert.deepEqual(r.shift(),{sales:1,gross:2600,paidBack:600,net:2000,saving:600,markedUnits:3});
 });
+test('B1 exposure uses the actual rounded unit price and excludes non-due stock',()=>{
+  const r=fresh();assert.deepEqual(r.expiryReview(),{units:5,value:3226,expired:0,isolated:0});
+});
+test('B2 a partial close-out reduces exposure and does not touch cash',()=>{
+  const r=fresh();assert.equal(r.writeOff('B03','Closing surplus',1),'W0001');
+  assert.equal(r.expiryReview().value,2513);assert.equal(r.shift().net,0);
+  assert.equal(r.trace('B03').events[0].delta,-1);
+});
+test('B3 validate date, source balance and quantity before posting',()=>{
+  const r=fresh();
+  for(const args of [['B02','Closing surplus',1],['B01','Expired stock',1],
+    ['B01','Closing surplus',4],['B01','Closing surplus',.5],['B01','Quarantine disposal',1]])
+    assert.throws(()=>r.writeOff(...args));
+  assert.equal(r.s.moves.length,0);
+  const tomorrow=new Register(r.s,'2026-11-27');tomorrow.writeOff('B01','Expired stock',3);
+  assert.equal(tomorrow.expiryReview().expired,2);
+});
+test('B4 tracing a mixed receipt attributes only the selected batch and keeps disposal cash-neutral',()=>{
+  const r=fresh();const sale=riceSale(r);r.refund(sale.id,0,1,'Opened');
+  r.writeOff('B01','Quarantine disposal',1);
+  assert.deepEqual(r.trace('B01').events.map(m=>m.cash),[1800,-600,0]);
+  assert.equal(r.trace('B02').net,800);assert.equal(r.shift().net,2000);
+  assert.throws(()=>r.writeOff('B01','Quarantine disposal',1));
+});
