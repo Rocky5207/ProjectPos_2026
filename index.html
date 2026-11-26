@@ -2,12 +2,30 @@
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Campus Shop · Electronics Counter</title>
 <style>
-*{box-sizing:border-box}body{max-width:920px;margin:40px auto;padding:0 20px;background:#f4f5f1;color:#19372f;font:18px/1.5 system-ui}header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #345f50}h1{font-size:34px}h2{font-size:23px;margin:0 0 12px}section{background:white;border:1px solid #cdd8d1;padding:22px;margin:16px 0;border-radius:8px}select,input,button{padding:8px;font:inherit;border:1px solid #9aaea4;border-radius:4px}button{background:#215a49;color:white;cursor:pointer}input{width:100px}label{display:inline-block;margin:5px}table{border-collapse:collapse;width:100%}td,th{text-align:left;border-bottom:1px solid #ddd;padding:5px}output{display:block;font-weight:bold;margin-top:8px}nav{margin-top:16px}p{margin:8px 0}
+*{box-sizing:border-box}
+body{max-width:1080px;margin:26px auto;padding:0 26px;background:#f5f2eb;color:#272520;font:16px/1.45 Arial,sans-serif}
+header{display:flex;align-items:end;justify-content:space-between;border-bottom:3px solid #272520;padding-bottom:12px}
+header small,header span,caption,th,nav button{font:600 12px/1.4 monospace;letter-spacing:.06em}
+h1,h2{font-family:Georgia,serif}h1{font-size:42px;line-height:1.12;margin:5px 0 0}h2{font-size:24px;margin:0 0 12px}
+nav{display:flex;gap:5px;margin:14px 0}
+section{border:1px solid #aaa396;background:#fffefa;padding:18px;margin-bottom:12px}
+button,input,select{font:inherit;border:1px solid #837e74;padding:7px 10px;border-radius:2px;color:inherit}
+button{background:#eeeae1;cursor:pointer}button:hover,button:focus-visible{outline:2px solid #9b422e;outline-offset:1px}
+button[aria-pressed=true],#finish{background:#8b3828;color:white;border-color:#8b3828}
+#parts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 15px}
+#parts button{background:#fffefa;text-align:left;display:grid;grid-template-columns:65px auto;align-items:center;gap:9px}
+#parts canvas{width:62px;height:50px}#parts small{display:block;color:#555048;font:12px monospace}
+#parts button[aria-pressed=true]{color:#272520;border-bottom:3px solid #8b3828}
+label{display:inline-block;margin:4px 6px 4px 0}input{width:90px}select{max-width:100%}
+table{border-collapse:collapse;width:100%;margin:10px 0}td,th{padding:6px;text-align:left;border-bottom:1px solid #d9d4ca}th{background:#f1eee6}caption{text-align:left;margin-bottom:5px}
+p{margin:8px 0}#total{font: bold 25px Georgia,serif}#msg{display:block;color:#8b3828;font-weight:bold;margin-top:8px}
+#receipt{font:15px/1.5 monospace;border-left:3px solid #8b3828;padding-left:14px}
+@media(max-width:650px){body{padding:0 12px;margin:14px auto}h1{font-size:30px}#parts{grid-template-columns:1fr}#parts canvas{height:34px;width:46px}section{padding:12px}#balance th{font-size:10px}}
 </style>
-<header><h1>Campus Shop · Electronics Counter</h1><span>Cash desk 01</span></header>
+<header><div><small>CAMPUS SHOP</small><h1>Electronics Counter</h1></div><span>Cash desk 01</span></header>
 <nav><button id="sell">Sale</button> <button id="back">Returns</button></nav>
 <section><h2 id="heading"></h2><div id="lookup" hidden><label>Receipt no. <input id="number" type="number" min="1"></label><button id="load">Find receipt</button><table id="balance" hidden><caption>Original receipt balance</caption><thead><tr><th>Item</th><th>Unit</th><th>Bought</th><th>Already returned</th><th>Left to return</th></tr></thead><tbody id="balanceRows"></tbody></table></div>
-<label>Item <select id="product"></select></label><label>Qty <input id="qty" type="number" min="1" value="1"></label><button id="add">Add item</button>
+<div id="parts" aria-label="Choose a component"></div><label>Item <select id="product"></select></label><label>Qty <input id="qty" type="number" min="1" value="1"></label><button id="add">Add item</button>
 <table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody id="lines"></tbody></table>
 <p><strong id="total"></strong></p><label id="cashLabel">Cash received ¥ <input id="cash" type="number" step=".01" min="0"></label><button id="finish"></button><output id="msg" aria-live="polite"></output></section>
 <section><h2>Last transaction</h2><div id="receipt">No transaction yet.</div></section>
@@ -54,6 +72,59 @@ class Register {
 }
 const register = new Register();
 let basket, returning, sale;
+// Small parts illustrations for the product picker.
+function drawPart(canvas, id) {
+  const pen = canvas.getContext('2d');
+  pen.scale(2, 2);
+  pen.strokeStyle = '#453e35';
+  pen.lineWidth = 1.5;
+  if (id === 'board') {
+    pen.fillStyle = '#eee9dc';
+    pen.fillRect(4,9,53,32);
+    pen.strokeRect(4,9,53,32);
+    for (let x=9; x<55; x+=5) {
+      for (const y of [14,18,23,29,33,37]) pen.fillStyle='#564f46', pen.fillRect(x,y,1.6,1.6);
+    }
+  } else if (id === 'wires') {
+    for (const [offset,color] of [[0,'#974631'],[5,'#44413b'],[10,'#96804e']]) {
+      pen.strokeStyle=color;
+      pen.beginPath(); pen.moveTo(6,27+offset);
+      pen.bezierCurveTo(24,28+offset,28,4+offset,52,9+offset); pen.stroke();
+      pen.fillStyle='#33312b'; pen.fillRect(2,25+offset,7,4); pen.fillRect(50,7+offset,7,4);
+    }
+  } else {
+    pen.beginPath(); pen.moveTo(26,24); pen.lineTo(26,46);
+    pen.moveTo(34,24); pen.lineTo(34,41); pen.stroke();
+    pen.fillStyle='#ac4a34'; pen.beginPath(); pen.arc(30,18,9,Math.PI,0);
+    pen.lineTo(39,27); pen.lineTo(21,27); pen.closePath(); pen.fill(); pen.stroke();
+    pen.fillRect(19,26,22,3);
+  }
+}
+function markPart() {
+  for (const tile of $('parts').children)
+    tile.setAttribute('aria-pressed',String(tile.dataset.id === $('product').value));
+}
+function showParts() {
+  $('parts').replaceChildren();
+  $('parts').style.display = returning ? 'none' : '';
+  if (returning) return;
+  for (const [id,p] of Object.entries(catalog)) {
+    const tile = document.createElement('button');
+    tile.dataset.id = id;
+    const art = document.createElement('canvas');
+    art.width=124; art.height=100; art.setAttribute('aria-hidden','true');
+    drawPart(art,id);
+    const label=document.createElement('span');
+    label.textContent=p.name;
+    const details=document.createElement('small');
+    details.textContent=money(p.price)+' / '+p.unit;
+    label.append(details); tile.append(art,label);
+    tile.onclick=()=>{ $('product').value=id; markPart(); };
+    $('parts').append(tile);
+  }
+  markPart();
+}
+$('product').onchange=markPart;
 function draw(){
   $('balance').hidden = !sale;
   $('balanceRows').replaceChildren();
@@ -70,17 +141,21 @@ function draw(){
     if (returning && (!sale || !sale.items[id])) continue;
     $('product').add(new Option(p.name+' · '+money(p.price)+'/'+p.unit+' · '+register.available(id,sale)+' '+p.unit+'(s) available',id));
   }
+  showParts();
   $('lines').innerHTML = Object.entries(basket.items).map(([id,q]) =>
     '<tr><td>'+catalog[id].name+'</td><td>'+q+' '+catalog[id].unit+'(s)</td><td>'+money(q*catalog[id].price)+'</td></tr>').join('');
   $('total').textContent = (returning?'Refund: ':'Total: ')+money(basket.total());
 }
 function mode(isReturn){
+  $('sell').setAttribute('aria-pressed',String(!isReturn));
+  $('back').setAttribute('aria-pressed',String(isReturn));
   returning=isReturn; sale=null; basket=new Basket();
   $('heading').textContent=isReturn?'Return items':'New sale';
   $('lookup').hidden=!isReturn; $('cashLabel').style.display=isReturn?'none':'';
   $('finish').textContent=isReturn?'Confirm refund':'Take payment';
   $('cash').value=''; $('qty').value=1; $('msg').textContent=''; draw();
 }
+$('cash').oninput=()=>{$('msg').textContent='';};
 function action(fn){try{$('msg').textContent='';fn();}catch(e){$('msg').textContent=e.message;}}
 $('sell').onclick=()=>mode(false); $('back').onclick=()=>mode(true);
 $('load').onclick=()=>action(()=>{
