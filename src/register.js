@@ -123,6 +123,46 @@ class Register {
     this.s.lots.push(lot); this.stock.move(lot,qty,0,'Delivery',lot.id);
     return lot.id;
   }
+  expiryReview() {
+    const expiring=this.s.lots.filter(l=>l.expires===this.day && l.qty>0);
+    return {
+      units:expiring.reduce((n,l)=>n+l.qty,0),
+      value:expiring.reduce((n,l)=>n+l.qty*this.stock.price(l),0),
+      expired:this.s.lots.filter(l=>l.expires<this.day).reduce((n,l)=>n+l.qty,0),
+      isolated:this.s.lots.reduce((n,l)=>n+l.blocked,0)
+    };
+  }
+  trace(batch) {
+    const lot=this.s.lots.find(l=>l.id===batch);
+    if(!lot) throw Error('Unknown lot.');
+    const cashByRef=new Map();
+    for(const sale of this.s.sales){
+      const amount=sale.lines.filter(l=>l.lot===batch).reduce((n,l)=>n+l.qty*l.unit,0);
+      if(amount) cashByRef.set(sale.id,amount);
+    }
+    for(const refund of this.s.refunds.filter(r=>r.lot===batch))
+      cashByRef.set(refund.id,-refund.amount);
+    const events=this.s.moves.filter(m=>m.lot===batch).map(m=>({...m,cash:cashByRef.get(m.ref)||0}));
+    return {lot,events,net:events.reduce((n,e)=>n+e.cash,0)};
+  }
+  disposalOptions(lot) {
+    const options=[];
+    if(lot.qty>0 && lot.expires<=this.day)
+      options.push(lot.expires===this.day?'Closing surplus':'Expired stock');
+    if(lot.blocked>0) options.push('Quarantine disposal');
+    return options;
+  }
+  writeOff(batch,reason,units) {
+    positive(units);
+    const lot=this.s.lots.find(l=>l.id===batch);
+    if(!lot || !this.disposalOptions(lot).includes(reason))
+      throw Error('This reason does not apply to the selected lot.');
+    const isolated=reason==='Quarantine disposal';
+    if(units>(isolated?lot.blocked:lot.qty)) throw Error('Quantity exceeds the selected stock balance.');
+    const ref='W'+String(this.s.moves.filter(m=>m.ref.startsWith('W')).length+1).padStart(4,'0');
+    this.stock.move(lot,isolated?0:-units,isolated?-units:0,reason,ref);
+    return ref;
+  }
   shift() {
     const sales=this.s.sales.filter(s=>s.day===this.day);
     const refunds=this.s.refunds.filter(r=>r.day===this.day);
