@@ -100,3 +100,8 @@ dialog[open]{position:static;width:100%;border:none;max-height:none}
 dialog .actions{display:none}
 }
 
+.columns > * { min-width: 0; }
+@media (max-width:680px) {
+  .columns { grid-template-columns:minmax(0,1fr); }
+  .field select { max-width:100%; }
+}
