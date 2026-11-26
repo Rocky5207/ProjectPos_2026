@@ -33,3 +33,7 @@ One local business date and one shared till are assumed. Retail authentication, 
 Open Batches to see units expiring today, their current shelf value, expired on-hand units and quarantined stock. Pick a lot to trace its sale, refund, delivery and disposal references. The net amount is across that lot's full history. At closing a cashier may write off remaining units due today, an expired shelf balance, or units already isolated. Each entry affects only the chosen balance and posts zero cash. On a fresh till, B03 has two discounted sandwiches worth ¥14.26 together. Writing off one reduces the total expiring shelf value from ¥32.26 to ¥25.13.
 
 Run `node test/queue-study.js` to reproduce the report's sixteen basket-interruption trials.
+
+## Cash handover
+
+Under **Shift → Cash handover**, enter the starting float for the business date. After the lunch example the ledger has ¥34 sales and ¥6 refunds. A ¥100 opening float therefore gives an expected drawer of ¥128. Enter note and coin quantities, save a count, and recount if needed. Both counts retain their original totals. The ledger CSV includes the dated checkpoints and their denomination breakdown. A counted shortage does not alter sales or stock. Cash drops and top-ups are outside this single-till workflow.

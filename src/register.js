@@ -1,5 +1,6 @@
 'use strict';
 // All monetary values are integer fen. Business dates use the counter's local clock.
+const CASH_VALUES = [10000,5000,2000,1000,500,100,50,10,5,2,1];
 const PRODUCTS = [
   {id:'101', art:'rice', name:'Seaweed rice ball', group:'Fresh', price:800, min:5},
   {id:'102', art:'sandwich', name:'Egg sandwich', group:'Fresh', price:950, min:4},
@@ -162,6 +163,36 @@ class Register {
     const ref='W'+String(this.s.moves.filter(m=>m.ref.startsWith('W')).length+1).padStart(4,'0');
     this.stock.move(lot,isolated?0:-units,isolated?-units:0,reason,ref);
     return ref;
+  }
+  drawerDay() {
+    return (this.s.drawerDays || []).find(d => d.day === this.day);
+  }
+  setOpeningFloat(fen) {
+    if (!Number.isSafeInteger(fen) || fen < 0 || fen > 100000000)
+      throw Error('Enter an opening float between 0 and 1,000,000 yuan.');
+    if (this.drawerDay()) throw Error('An opening float is already recorded for this date.');
+    this.s.drawerDays ??= [];
+    this.s.drawerDays.push({day:this.day,opening:fen,checks:[]});
+  }
+  countDrawer(pieces) {
+    const day = this.drawerDay();
+    if (!day) throw Error('Record the opening float first.');
+    if (!Array.isArray(pieces) || pieces.length !== CASH_VALUES.length ||
+        !Array.from(pieces).every(n => Number.isSafeInteger(n) && n >= 0 && n <= 9999))
+      throw Error('Enter whole piece counts from 0 to 9999.');
+    const counted = pieces.reduce((v,n,i) => v + n*CASH_VALUES[i], 0);
+    const totals = this.shift();
+    const expected = day.opening + totals.net;
+    const previous = day.checks.at(-1);
+    const refunds = this.s.refunds.filter(r => r.day === this.day).length;
+    if (previous && previous.sales === totals.sales && previous.refunds === refunds &&
+        previous.pieces.every((v,i) => v === pieces[i]))
+      throw Error('That count was already recorded.');
+    const check = {ref:this.day+'-'+String(day.checks.length+1).padStart(2,'0'),
+      pieces:[...pieces],sales:totals.sales,refunds,gross:totals.gross,paidBack:totals.paidBack,
+      expected,counted,variance:counted-expected};
+    day.checks.push(check);
+    return check;
   }
   shift() {
     const sales=this.s.sales.filter(s=>s.day===this.day);
